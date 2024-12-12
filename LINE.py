@@ -13,7 +13,7 @@ from googleapiclient.http import MediaIoBaseDownload
 import schedule
 import time
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 import io
 
@@ -29,13 +29,16 @@ configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 def get_drive_service():
     """初始化 Google Drive 服務"""
     try:
+        print("開始初始化 Drive 服務")
         creds = service_account.Credentials.from_service_account_file(
             'credentials.json',
             scopes=['https://www.googleapis.com/auth/drive.readonly']
         )
-        return build('drive', 'v3', credentials=creds)
+        service = build('drive', 'v3', credentials=creds)
+        print("Drive 服務初始化成功")
+        return service
     except Exception as e:
-        print(f"初始化 Drive 服務時發生錯誤: {e}")
+        print(f"初始化 Drive 服務時發生錯誤: {str(e)}")
         return None
 
 def send_report():
@@ -44,13 +47,14 @@ def send_report():
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             
-            # 使用日本時區
+            # 使用日本時區，並計算前一天的日期
             jst = pytz.timezone('Asia/Tokyo')
             current_time = datetime.now(jst)
-            current_date = current_time.strftime("%m/%d")
+            yesterday = current_time - timedelta(days=1)
+            report_date = yesterday.strftime("%m/%d")
             
             # 發送文字訊息
-            message = TextMessage(text=f"早安{current_date}大阪新今宮營運報表如下")
+            message = TextMessage(text=f"早安，{report_date}大阪新今宮營運報表如下")
             line_bot_api.push_message(
                 PushMessageRequest(
                     to=GROUP_ID,
@@ -60,6 +64,7 @@ def send_report():
             
             # 嘗試下載並發送 Google Drive 文件
             try:
+                print("開始下載 Google Drive 檔案")
                 service = get_drive_service()
                 if service:
                     request = service.files().get_media(fileId=FILE_ID)
@@ -68,20 +73,27 @@ def send_report():
                     done = False
                     while done is False:
                         status, done = downloader.next_chunk()
+                        print(f"下載進度: {int(status.progress() * 100)}%")
                     print("檔案下載成功")
-                    # 這裡之後會加入發送圖片的程式碼
+                    
+                    # 發送圖片
+                    # TODO: 實作圖片發送功能
+                    
             except Exception as e:
-                print(f"處理 Drive 檔案時發生錯誤: {e}")
+                print(f"處理 Drive 檔案時發生錯誤: {str(e)}")
             
             return True
             
     except Exception as e:
-        print(f"發送報表時發生錯誤: {e}")
+        print(f"發送報表時發生錯誤: {str(e)}")
         return False
 
 @app.route('/')
 def hello():
-    return 'LINE Bot is running!'
+    jst = pytz.timezone('Asia/Tokyo')
+    current_time = datetime.now(jst)
+    yesterday = current_time - timedelta(days=1)
+    return f'LINE Bot is running! Will send {yesterday.strftime("%m/%d")} report at 10:00 AM JST.'
 
 @app.route('/send_report', methods=['GET'])
 def trigger_report():
