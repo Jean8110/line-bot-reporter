@@ -11,49 +11,53 @@ import time
 import threading
 from datetime import datetime
 import pytz
+import os
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 
 app = Flask(__name__)
 
-# LINE Bot ]w
+# LINE Bot 設定
 CHANNEL_ACCESS_TOKEN = "lFD0fT5izkXIdZvVxg8hhpuehkxbar5utGwa7QyffB/IOLIZ5T1B5jwZnpF9STfHWdv7nbN7dDYklIjMdOU5G8LFXlVqjlC1HHsFemN+ydSYSRE9+lvaoAEdD2fNl76NVl6IhR5cE33AzdRVj+RWuQdB04t89/1O/w1cDnyilFU="
 GROUP_ID = "C1171712999af06b315a23dd962ba9185"
 
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 
 def send_report():
-    """oews""
+    """發送營運報表到指定群組"""
     try:
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             
-            # ϥΤ饻ɰ            jst = pytz.timezone('Asia/Tokyo')
+            # 使用日本時區
+            jst = pytz.timezone('Asia/Tokyo')
             current_time = datetime.now(jst)
             current_date = current_time.strftime("%m/%d")
             
-            # إ߰T
-            message = TextMessage(text=f"w{current_date}jscpU")
+            # 建立訊息
+            message = TextMessage(text=f"早安{current_date}大阪新今宮營運報表如下")
             
-            # oeT
+            # 發送訊息
             response = line_bot_api.push_message(
                 PushMessageRequest(
                     to=GROUP_ID,
                     messages=[message]
                 )
             )
-            print(f"{current_date} oe\")
+            print(f"{current_date} 報表發送成功")
             return True
             
     except Exception as e:
-        print(f"oeɵoͿ: {e}")
+        print(f"發送報表時發生錯誤: {e}")
         return False
 
 def run_scheduler():
-    """Ƶ{"""
-    # ]wCѦW10oe
+    """執行排程器"""
+    # 設定每天早上10點發送
     schedule.every().day.at("10:00").do(send_report)
-    print("Ƶ{wҰʡANѦW 10:00 oe")
+    print("排程器已啟動，將於每天早上 10:00 發送報表")
     
-    # {
+    # 持續執行排程
     while True:
         schedule.run_pending()
         time.sleep(60)
@@ -64,36 +68,30 @@ def hello():
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    """dˬdI"""
+    """健康檢查端點"""
+    jst = pytz.timezone('Asia/Tokyo')
+    current_time = datetime.now(jst)
     return jsonify({
         'status': 'healthy',
-        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'current_time': current_time.strftime('%Y-%m-%d %H:%M:%S %Z'),
         'next_report': '10:00 AM JST'
     })
 
 @app.route('/send_report', methods=['GET'])
 def trigger_report():
-    """Ĳooe"""
+    """手動觸發發送報表"""
     if send_report():
-        return 'oe\'
-    return 'oe, 500
+        return '報表發送成功'
+    return '報表發送失敗', 500
 
 @app.route("/callback", methods=['POST', 'GET'])
 def callback():
     return 'OK'
 
-# Bz
-@app.errorhandler(404)
-def not_found(e):
-    return '䤣', 404
-
-@app.errorhandler(500)
-def server_error(e):
-    return '', 500
-
 if __name__ == "__main__":
-    # bIƵ{
+    # 在背景執行排程器
     scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
     scheduler_thread.start()
     
-    # ҰFlask     app.run(debug=True, port=5001)
+    # 啟動 Flask 應用
+    app.run(debug=True, port=5001)
