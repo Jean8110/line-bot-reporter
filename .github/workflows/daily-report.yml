@@ -1,0 +1,14 @@
+name: Daily Report
+
+on:
+  schedule:
+    - cron: '0 1 * * *'  # UTC 1:00 = JST 10:00
+  workflow_dispatch:      # 允許手動觸發
+
+jobs:
+  send_report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send report trigger
+        run: |
+          curl https://line-bot-reporter.onrender.com/send_report
