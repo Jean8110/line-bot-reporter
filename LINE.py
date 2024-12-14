@@ -4,7 +4,8 @@ from linebot.v3.messaging import (
     ApiClient,
     MessagingApi,
     PushMessageRequest,
-    TextMessage
+    TextMessage,
+    ImageMessage
 )
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -43,13 +44,16 @@ def get_drive_service():
 def find_report_file(service, folder_id):
     """找到對應的報表文件"""
     try:
+        # 取得昨天的日期
         jst = pytz.timezone('Asia/Tokyo')
         yesterday = datetime.now(jst) - timedelta(days=1)
-        target_month = yesterday.strftime('%Y年%m月')
-        target_date = yesterday.strftime('%d')
+        target_month = yesterday.strftime('%Y年%m月')    # 資料夾格式：2024年12月
+        target_filename = yesterday.strftime('%m%d')     # 檔案格式：1213
         
         print(f"尋找月份資料夾: {target_month}")
+        print(f"尋找檔案名稱: {target_filename}")
         
+        # 找月份資料夾
         month_query = f"name = '{target_month}' and '{folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder'"
         month_results = service.files().list(q=month_query).execute()
         month_folders = month_results.get('files', [])
@@ -59,19 +63,20 @@ def find_report_file(service, folder_id):
             return None
             
         month_folder_id = month_folders[0]['id']
-        print(f"找到月份資料夾: {month_folder_id}")
+        print(f"找到月份資料夾 ID: {month_folder_id}")
         
-        file_query = f"'{month_folder_id}' in parents and name contains '{target_date}'"
+        # 在月份資料夾中找目標檔案
+        file_query = f"'{month_folder_id}' in parents and name contains '{target_filename}'"
         file_results = service.files().list(q=file_query).execute()
         files = file_results.get('files', [])
         
         if not files:
-            print(f"找不到日期檔案: {target_date}")
+            print(f"找不到日期檔案: {target_filename}")
             return None
             
         target_file = files[0]
         print(f"找到目標檔案: {target_file['name']}")
-        return target_file['id']
+        return target_file
         
     except Exception as e:
         print(f"搜尋檔案時發生錯誤: {str(e)}")
@@ -83,11 +88,13 @@ def send_report():
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             
+            # 取得日期
             jst = pytz.timezone('Asia/Tokyo')
             current_time = datetime.now(jst)
             yesterday = current_time - timedelta(days=1)
             report_date = yesterday.strftime("%m/%d")
             
+            # 發送文字訊息
             message = TextMessage(text=f"早安，{report_date}大阪新今宮營運報表如下")
             line_bot_api.push_message(
                 PushMessageRequest(
@@ -96,21 +103,35 @@ def send_report():
                 )
             )
             
+            # 處理 Google Drive 檔案
             try:
-                print("開始搜尋報表檔案")
+                print("開始處理 Google Drive 檔案")
                 service = get_drive_service()
                 if service:
-                    file_id = find_report_file(service, FOLDER_ID)
-                    if file_id:
-                        print(f"開始下載檔案 ID: {file_id}")
-                        request = service.files().get_media(fileId=file_id)
-                        file = io.BytesIO()
-                        downloader = MediaIoBaseDownload(file, request)
-                        done = False
-                        while done is False:
-                            status, done = downloader.next_chunk()
-                            print(f"下載進度: {int(status.progress() * 100)}%")
-                        print("檔案下載成功")
+                    file_info = find_report_file(service, FOLDER_ID)
+                    if file_info:
+                        file_id = file_info['id']
+                        print(f"開始下載檔案: {file_info['name']}")
+                        
+                        # 獲取檔案的 webContentLink
+                        file = service.files().get(fileId=file_id, fields='webContentLink').execute()
+                        webContentLink = file.get('webContentLink')
+                        
+                        if webContentLink:
+                            print("發送圖片訊息")
+                            image_message = ImageMessage(
+                                originalContentUrl=webContentLink,
+                                previewImageUrl=webContentLink
+                            )
+                            line_bot_api.push_message(
+                                PushMessageRequest(
+                                    to=GROUP_ID,
+                                    messages=[image_message]
+                                )
+                            )
+                            print("圖片發送成功")
+                        else:
+                            print("無法獲取檔案的公開連結")
                     else:
                         print("找不到對應的報表檔案")
                 
@@ -136,6 +157,3 @@ def trigger_report():
     if send_report():
         return "報表發送成功"
     return "報表發送失敗", 500
-
-# 這裡不需要使用 __name__ == "__main__" 的判斷
-# 因為 gunicorn 會直接呼叫 app
