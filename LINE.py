@@ -41,6 +41,36 @@ def get_drive_service():
         print(f"初始化 Drive 服務時發生錯誤: {str(e)}")
         return None
 
+def get_shareable_link(service, file_id):
+    """獲取可共享的連結"""
+    try:
+        # 設定檔案權限為公開可見
+        permission = {
+            'type': 'anyone',
+            'role': 'reader'
+        }
+        service.permissions().create(
+            fileId=file_id,
+            body=permission
+        ).execute()
+        print(f"已設定檔案 {file_id} 為公開可見")
+        
+        # 獲取檔案資訊
+        file = service.files().get(
+            fileId=file_id,
+            fields='webContentLink,webViewLink'
+        ).execute()
+        
+        # 轉換為直接存取連結
+        view_link = file.get('webViewLink')
+        direct_link = f"https://drive.google.com/uc?id={file_id}"
+        print(f"檔案直接連結: {direct_link}")
+        return direct_link
+        
+    except Exception as e:
+        print(f"獲取共享連結時發生錯誤: {str(e)}")
+        return None
+
 def find_report_file(service, folder_id):
     """找到對應的報表文件"""
     try:
@@ -110,18 +140,14 @@ def send_report():
                 if service:
                     file_info = find_report_file(service, FOLDER_ID)
                     if file_info:
-                        file_id = file_info['id']
-                        print(f"開始下載檔案: {file_info['name']}")
+                        print(f"找到檔案: {file_info['name']}")
+                        image_url = get_shareable_link(service, file_info['id'])
                         
-                        # 獲取檔案的 webContentLink
-                        file = service.files().get(fileId=file_id, fields='webContentLink').execute()
-                        webContentLink = file.get('webContentLink')
-                        
-                        if webContentLink:
-                            print("發送圖片訊息")
+                        if image_url:
+                            print(f"準備發送圖片: {image_url}")
                             image_message = ImageMessage(
-                                originalContentUrl=webContentLink,
-                                previewImageUrl=webContentLink
+                                originalContentUrl=image_url,
+                                previewImageUrl=image_url
                             )
                             line_bot_api.push_message(
                                 PushMessageRequest(
@@ -131,7 +157,7 @@ def send_report():
                             )
                             print("圖片發送成功")
                         else:
-                            print("無法獲取檔案的公開連結")
+                            print("無法獲取圖片連結")
                     else:
                         print("找不到對應的報表檔案")
                 
