@@ -1,0 +1,23 @@
+from flask import Flask, request
+from linebot.v3.messaging import (
+    Configuration,
+    ApiClient,
+    MessagingApi,
+    PushMessageRequest,
+    TextMessage
+)
+
+app = Flask(__name__)
+
+CHANNEL_ACCESS_TOKEN = "lFD0fT5izkXIdZvVxg8hhpuehkxbar5utGwa7QyffB/IOLIZ5T1B5jwZnpF9STfHWdv7nbN7dDYklIjMdOU5G8LFXlVqjlC1HHsFemN+ydSYSRE9+lvaoAEdD2fNl76NVl6IhR5cE33AzdRVj+RWuQdB04t89/1O/w1cDnyilFU="
+
+configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
+
+@app.route("/callback", methods=['POST'])
+def callback():
+    print("收到 webhook 請求")
+    print(f"Body: {request.get_data(as_text=True)}")
+    return 'OK'
+
+if __name__ == "__main__":
+    app.run(port=5001)
