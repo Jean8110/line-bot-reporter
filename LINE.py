@@ -132,7 +132,7 @@ def send_report():
                     print(f"開始發送到群組: {group_id}")
                     
                     # 發送文字訊息
-                    message = TextMessage(text=f"早安，{report_date}大阪新今宮營運報表如下")
+                    message = TextMessage(text=f"各位好，{report_date}大阪新今宮營運報表如下")
                     line_bot_api.push_message(
                         PushMessageRequest(
                             to=group_id,
