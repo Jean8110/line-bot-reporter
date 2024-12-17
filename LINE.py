@@ -16,6 +16,7 @@ import threading
 from datetime import datetime, timedelta
 import pytz
 import io
+import traceback
 
 app = Flask(__name__)
 
@@ -30,45 +31,62 @@ def get_drive_service():
     """初始化 Google Drive 服務"""
     try:
         print("開始初始化 Drive 服務")
+        SCOPES = [
+            'https://www.googleapis.com/auth/drive.metadata',
+            'https://www.googleapis.com/auth/drive.file',
+            'https://www.googleapis.com/auth/drive',
+            'https://www.googleapis.com/auth/drive.metadata.readonly',
+            'https://www.googleapis.com/auth/drive.readonly',
+            'https://www.googleapis.com/auth/drive.photos.readonly'
+        ]
         creds = service_account.Credentials.from_service_account_file(
             '/etc/secrets/credentials.json',
-            scopes=['https://www.googleapis.com/auth/drive.readonly']
+            scopes=SCOPES
         )
         service = build('drive', 'v3', credentials=creds)
         print("Drive 服務初始化成功")
         return service
     except Exception as e:
         print(f"初始化 Drive 服務時發生錯誤: {str(e)}")
+        print(f"錯誤詳情:\n{traceback.format_exc()}")
         return None
 
 def get_shareable_link(service, file_id):
     """獲取可共享的連結"""
     try:
-        # 設定檔案權限為公開可見
+        print(f"開始設定檔案 {file_id} 的權限")
+        
+        # 修改檔案權限設定
         permission = {
             'type': 'anyone',
-            'role': 'reader'
+            'role': 'reader',
+            'allowFileDiscovery': True
         }
+        
+        try:
+            service.permissions().delete(fileId=file_id, permissionId='anyoneWithLink').execute()
+        except:
+            pass  # 如果權限不存在則忽略錯誤
+            
         service.permissions().create(
             fileId=file_id,
-            body=permission
+            body=permission,
+            fields='id'
         ).execute()
-        print(f"已設定檔案 {file_id} 為公開可見")
         
-        # 獲取檔案資訊
+        # 獲取直接下載連結
         file = service.files().get(
             fileId=file_id,
             fields='webContentLink,webViewLink'
         ).execute()
         
-        # 轉換為直接存取連結
-        view_link = file.get('webViewLink')
         direct_link = f"https://drive.google.com/uc?id={file_id}"
-        print(f"檔案直接連結: {direct_link}")
+        print(f"產生直接連結: {direct_link}")
         return direct_link
         
     except Exception as e:
-        print(f"獲取共享連結時發生錯誤: {str(e)}")
+        print(f"設定檔案權限時發生錯誤: {str(e)}")
+        print(f"錯誤詳情:\n{traceback.format_exc()}")
         return None
 
 def find_report_file(service, folder_id):
@@ -80,8 +98,7 @@ def find_report_file(service, folder_id):
         target_month = yesterday.strftime('%Y年%m月')    # 資料夾格式：2024年12月
         target_filename = yesterday.strftime('%m%d')     # 檔案格式：1213
         
-        print(f"尋找月份資料夾: {target_month}")
-        print(f"尋找檔案名稱: {target_filename}")
+        print(f"開始搜尋檔案 - 月份資料夾: {target_month}, 目標檔名: {target_filename}")
         
         # 找月份資料夾
         month_query = f"name = '{target_month}' and '{folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder'"
@@ -89,7 +106,7 @@ def find_report_file(service, folder_id):
         month_folders = month_results.get('files', [])
         
         if not month_folders:
-            print(f"找不到月份資料夾: {target_month}")
+            print(f"錯誤: 找不到月份資料夾 {target_month}")
             return None
             
         month_folder_id = month_folders[0]['id']
@@ -101,15 +118,16 @@ def find_report_file(service, folder_id):
         files = file_results.get('files', [])
         
         if not files:
-            print(f"找不到日期檔案: {target_filename}")
+            print(f"錯誤: 在 {target_month} 資料夾中找不到 {target_filename} 的檔案")
             return None
             
         target_file = files[0]
-        print(f"找到目標檔案: {target_file['name']}")
+        print(f"成功找到檔案: {target_file['name']} (ID: {target_file['id']})")
         return target_file
         
     except Exception as e:
         print(f"搜尋檔案時發生錯誤: {str(e)}")
+        print(f"錯誤詳情:\n{traceback.format_exc()}")
         return None
 
 def send_report():
@@ -118,11 +136,13 @@ def send_report():
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             
-            # 取得日期
+            # 使用日本時區，並計算前一天的日期
             jst = pytz.timezone('Asia/Tokyo')
             current_time = datetime.now(jst)
             yesterday = current_time - timedelta(days=1)
             report_date = yesterday.strftime("%m/%d")
+            
+            print(f"開始處理 {report_date} 的報表")
             
             # 發送文字訊息
             message = TextMessage(text=f"早安，{report_date}大阪新今宮營運報表如下")
@@ -132,19 +152,24 @@ def send_report():
                     messages=[message]
                 )
             )
+            print("文字訊息發送成功")
             
             # 處理 Google Drive 檔案
             try:
-                print("開始處理 Google Drive 檔案")
+                print("開始連接 Google Drive")
                 service = get_drive_service()
                 if service:
+                    print("成功連接 Google Drive，開始搜尋檔案")
                     file_info = find_report_file(service, FOLDER_ID)
+                    print(f"搜尋結果: {file_info}")
+                    
                     if file_info:
-                        print(f"找到檔案: {file_info['name']}")
+                        print(f"找到檔案，開始處理圖片連結")
                         image_url = get_shareable_link(service, file_info['id'])
+                        print(f"取得圖片連結: {image_url}")
                         
                         if image_url:
-                            print(f"準備發送圖片: {image_url}")
+                            print("準備發送圖片")
                             image_message = ImageMessage(
                                 originalContentUrl=image_url,
                                 previewImageUrl=image_url
@@ -157,17 +182,21 @@ def send_report():
                             )
                             print("圖片發送成功")
                         else:
-                            print("無法獲取圖片連結")
+                            print("錯誤: 無法獲取圖片連結")
                     else:
-                        print("找不到對應的報表檔案")
+                        print("錯誤: 找不到對應的報表檔案")
+                else:
+                    print("錯誤: 無法連接 Google Drive 服務")
                 
             except Exception as e:
                 print(f"處理 Drive 檔案時發生錯誤: {str(e)}")
+                print(f"錯誤詳情:\n{traceback.format_exc()}")
             
             return True
             
     except Exception as e:
         print(f"發送報表時發生錯誤: {str(e)}")
+        print(f"錯誤詳情:\n{traceback.format_exc()}")
         return False
 
 @app.route("/")
