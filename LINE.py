@@ -22,7 +22,10 @@ app = Flask(__name__)
 
 # 設定
 CHANNEL_ACCESS_TOKEN = "lFD0fT5izkXIdZvVxg8hhpuehkxbar5utGwa7QyffB/IOLIZ5T1B5jwZnpF9STfHWdv7nbN7dDYklIjMdOU5G8LFXlVqjlC1HHsFemN+ydSYSRE9+lvaoAEdD2fNl76NVl6IhR5cE33AzdRVj+RWuQdB04t89/1O/w1cDnyilFU="
-GROUP_ID = "OGC190c4556db345f1cc094590dc96b7c99"
+GROUP_IDS = [
+    "C1171712999af06b315a23dd962ba9185",  # 測試群組
+    "OGC190c4556db345f1cc094590dc96b7c99" # 正式群組
+]
 FOLDER_ID = "1yNH3mP2LAUnZn8EjjGrzzpzNavkSzMqB"
 
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
@@ -111,53 +114,50 @@ def send_report():
             
             print(f"開始處理 {report_date} 的報表")
             
-            # 發送文字訊息
-            message = TextMessage(text=f"早安，{report_date}大阪新今宮營運報表如下")
-            line_bot_api.push_message(
-                PushMessageRequest(
-                    to=GROUP_ID,
-                    messages=[message]
-                )
-            )
-            print("文字訊息發送成功")
-            
             # 處理 Google Drive 檔案
-            try:
-                print("開始連接 Google Drive")
-                service = get_drive_service()
-                if service:
-                    print("成功連接 Google Drive，開始搜尋檔案")
-                    file_info = find_report_file(service, FOLDER_ID)
-                    print(f"搜尋結果: {file_info}")
+            service = get_drive_service()
+            file_info = None
+            image_url = None
+            
+            if service:
+                print("成功連接 Google Drive，開始搜尋檔案")
+                file_info = find_report_file(service, FOLDER_ID)
+                if file_info:
+                    print(f"找到檔案，開始處理圖片連結")
+                    image_url = get_shareable_link(file_info['id'])
+            
+            # 對每個群組發送訊息
+            for group_id in GROUP_IDS:
+                try:
+                    print(f"開始發送到群組: {group_id}")
                     
-                    if file_info:
-                        print(f"找到檔案，開始處理圖片連結")
-                        image_url = get_shareable_link(file_info['id'])
-                        print(f"取得圖片連結: {image_url}")
-                        
-                        if image_url:
-                            print("準備發送圖片")
-                            image_message = ImageMessage(
-                                originalContentUrl=image_url,
-                                previewImageUrl=image_url
+                    # 發送文字訊息
+                    message = TextMessage(text=f"早安，{report_date}大阪新今宮營運報表如下")
+                    line_bot_api.push_message(
+                        PushMessageRequest(
+                            to=group_id,
+                            messages=[message]
+                        )
+                    )
+                    print(f"文字訊息發送成功 - 群組: {group_id}")
+                    
+                    # 如果有圖片，發送圖片
+                    if image_url:
+                        image_message = ImageMessage(
+                            originalContentUrl=image_url,
+                            previewImageUrl=image_url
+                        )
+                        line_bot_api.push_message(
+                            PushMessageRequest(
+                                to=group_id,
+                                messages=[image_message]
                             )
-                            line_bot_api.push_message(
-                                PushMessageRequest(
-                                    to=GROUP_ID,
-                                    messages=[image_message]
-                                )
-                            )
-                            print("圖片發送成功")
-                        else:
-                            print("錯誤: 無法獲取圖片連結")
-                    else:
-                        print("錯誤: 找不到對應的報表檔案")
-                else:
-                    print("錯誤: 無法連接 Google Drive 服務")
-                
-            except Exception as e:
-                print(f"處理 Drive 檔案時發生錯誤: {str(e)}")
-                print(f"錯誤詳情:\n{traceback.format_exc()}")
+                        )
+                        print(f"圖片發送成功 - 群組: {group_id}")
+                    
+                except Exception as e:
+                    print(f"發送到群組 {group_id} 時發生錯誤: {str(e)}")
+                    continue
             
             return True
             
