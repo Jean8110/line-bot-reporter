@@ -2,13 +2,20 @@ name: Daily Report
 
 on:
   schedule:
-    - cron: '0 1 * * *'  # UTC 1:00 = JST 10:00
-  workflow_dispatch:      # 允許手動觸發
+    - cron: '0 1 * * *'  # UTC 01:00 = JST 10:00
+  workflow_dispatch:
 
 jobs:
   send_report:
     runs-on: ubuntu-latest
     steps:
-      - name: Send report trigger
+      - name: Wake up Render service
+        run: |
+          curl https://line-bot-reporter.onrender.com/
+
+      - name: Wait for service to wake up
+        run: sleep 30
+
+      - name: Send report
         run: |
           curl https://line-bot-reporter.onrender.com/send_report
