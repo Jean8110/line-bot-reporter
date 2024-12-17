@@ -2,7 +2,7 @@ name: Daily Report
 
 on:
   schedule:
-    - cron: '0 1 * * *'  # UTC 01:00 = JST 10:00
+    - cron: '0 23 * * *'  # 新設定 = UTC 23:00 = 隔天 JST 8:00
   workflow_dispatch:
 
 jobs:
