@@ -31,14 +31,7 @@ def get_drive_service():
     """初始化 Google Drive 服務"""
     try:
         print("開始初始化 Drive 服務")
-        SCOPES = [
-            'https://www.googleapis.com/auth/drive.metadata',
-            'https://www.googleapis.com/auth/drive.file',
-            'https://www.googleapis.com/auth/drive',
-            'https://www.googleapis.com/auth/drive.metadata.readonly',
-            'https://www.googleapis.com/auth/drive.readonly',
-            'https://www.googleapis.com/auth/drive.photos.readonly'
-        ]
+        SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
         creds = service_account.Credentials.from_service_account_file(
             '/etc/secrets/credentials.json',
             scopes=SCOPES
@@ -51,41 +44,15 @@ def get_drive_service():
         print(f"錯誤詳情:\n{traceback.format_exc()}")
         return None
 
-def get_shareable_link(service, file_id):
+def get_shareable_link(file_id):
     """獲取可共享的連結"""
     try:
-        print(f"開始設定檔案 {file_id} 的權限")
-        
-        # 修改檔案權限設定
-        permission = {
-            'type': 'anyone',
-            'role': 'reader',
-            'allowFileDiscovery': True
-        }
-        
-        try:
-            service.permissions().delete(fileId=file_id, permissionId='anyoneWithLink').execute()
-        except:
-            pass  # 如果權限不存在則忽略錯誤
-            
-        service.permissions().create(
-            fileId=file_id,
-            body=permission,
-            fields='id'
-        ).execute()
-        
-        # 獲取直接下載連結
-        file = service.files().get(
-            fileId=file_id,
-            fields='webContentLink,webViewLink'
-        ).execute()
-        
-        direct_link = f"https://drive.google.com/uc?id={file_id}"
+        # 直接使用檔案ID構建公開連結
+        direct_link = f"https://drive.google.com/uc?export=view&id={file_id}"
         print(f"產生直接連結: {direct_link}")
         return direct_link
-        
     except Exception as e:
-        print(f"設定檔案權限時發生錯誤: {str(e)}")
+        print(f"產生連結時發生錯誤: {str(e)}")
         print(f"錯誤詳情:\n{traceback.format_exc()}")
         return None
 
@@ -165,7 +132,7 @@ def send_report():
                     
                     if file_info:
                         print(f"找到檔案，開始處理圖片連結")
-                        image_url = get_shareable_link(service, file_info['id'])
+                        image_url = get_shareable_link(file_info['id'])
                         print(f"取得圖片連結: {image_url}")
                         
                         if image_url:
