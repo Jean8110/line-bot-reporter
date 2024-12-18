@@ -2,8 +2,8 @@ name: Daily Report
 
 on:
   schedule:
-    - cron: '0 23 * * *'  # 新設定 = UTC 23:00 = 隔天 JST 8:00
-  workflow_dispatch:
+    - cron: '25 0 * * *'  # UTC 00:25 = JST 9:25
+  workflow_dispatch:      
 
 jobs:
   send_report:
@@ -12,10 +12,8 @@ jobs:
       - name: Wake up Render service
         run: |
           curl https://line-bot-reporter.onrender.com/
-
-      - name: Wait for service to wake up
-        run: sleep 30
-
-      - name: Send report
+          sleep 30  # 等待 Render 服務完全啟動
+          
+      - name: Send report trigger
         run: |
           curl https://line-bot-reporter.onrender.com/send_report
