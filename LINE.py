@@ -24,7 +24,6 @@ app = Flask(__name__)
 CHANNEL_ACCESS_TOKEN = "lFD0fT5izkXIdZvVxg8hhpuehkxbar5utGwa7QyffB/IOLIZ5T1B5jwZnpF9STfHWdv7nbN7dDYklIjMdOU5G8LFXlVqjlC1HHsFemN+ydSYSRE9+lvaoAEdD2fNl76NVl6IhR5cE33AzdRVj+RWuQdB04t89/1O/w1cDnyilFU="
 GROUP_IDS = [
     "C1171712999af06b315a23dd962ba9185",  # 測試群組
-    "C190c4556db345f1cc094590dc96b7c99" # 正式群組
 ]
 FOLDER_ID = "1yNH3mP2LAUnZn8EjjGrzzpzNavkSzMqB"
 
