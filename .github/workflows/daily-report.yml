@@ -2,7 +2,7 @@ name: Daily Report
 
 on:
   schedule:
-    - cron: '05 5 * * *'  # UTC 05:05 = JST 14:05，預計實際執行在 JST 14:30
+    - cron: '56 5 * * *'  # UTC 05:56 = JST 14:56，預計實際執行在 JST 15:30
   workflow_dispatch:      
 
 jobs:
