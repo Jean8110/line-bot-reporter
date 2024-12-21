@@ -2,7 +2,7 @@ name: Daily Report
 
 on:
   schedule:
-    - cron: '00 22 * * *'  # UTC 22:00 = JST 07:00，給予2小時的緩衝時間
+    - cron: '30 23 * * *'  # UTC 23:30 = JST 08:30，預期延遲30分鐘左右
   workflow_dispatch:      
 
 jobs:
