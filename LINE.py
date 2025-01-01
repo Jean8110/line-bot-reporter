@@ -17,6 +17,8 @@ from datetime import datetime, timedelta
 import pytz
 import io
 import traceback
+import requests
+from urllib.parse import urlparse
 
 app = Flask(__name__)
 
@@ -26,6 +28,7 @@ GROUP_IDS = [
     "C190c4556db345f1cc094590dc96b7c99" # 正式群組
 ]
 FOLDER_ID = "1yNH3mP2LAUnZn8EjjGrzzpzNavkSzMqB"
+MAX_RETRIES = 3  # 最大重試次數
 
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 
@@ -33,7 +36,7 @@ def get_drive_service():
     """初始化 Google Drive 服務"""
     try:
         print("開始初始化 Drive 服務")
-        SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
+        SCOPES = ['https://www.googleapis.com/auth/drive.readonly', 'https://www.googleapis.com/auth/drive.file']
         creds = service_account.Credentials.from_service_account_file(
             '/etc/secrets/credentials.json',
             scopes=SCOPES
@@ -46,13 +49,93 @@ def get_drive_service():
         print(f"錯誤詳情:\n{traceback.format_exc()}")
         return None
 
-def get_shareable_link(file_id):
-    """獲取可共享的連結"""
+def validate_image_url(url):
+    """驗證圖片 URL 是否符合 LINE 的要求"""
     try:
-        # 直接使用檔案ID構建公開連結
-        direct_link = f"https://drive.google.com/uc?export=view&id={file_id}"
-        print(f"產生直接連結: {direct_link}")
-        return direct_link
+        # 檢查是否為 HTTPS
+        if not url.startswith('https'):
+            print("URL 必須使用 HTTPS")
+            return False
+
+        # 檢查副檔名
+        parsed_url = urlparse(url)
+        path = parsed_url.path.lower()
+        valid_extensions = ('.jpg', '.jpeg', '.png', '.gif')
+        if not any(path.endswith(ext) for ext in valid_extensions):
+            print("URL 必須以 .jpg, .jpeg, .png 或 .gif 結尾")
+            return False
+
+        # 檢查檔案大小（發送 HEAD 請求）
+        response = requests.head(url, allow_redirects=True, timeout=5)
+        if response.status_code != 200:
+            print(f"無法訪問 URL: {response.status_code}")
+            return False
+
+        content_length = int(response.headers.get('content-length', 0))
+        if content_length > 10 * 1024 * 1024:  # 10MB
+            print("圖片大小超過 10MB 限制")
+            return False
+
+        return True
+    except Exception as e:
+        print(f"驗證 URL 時發生錯誤: {str(e)}")
+        return False
+
+def get_shareable_link(service, file_id):
+    """獲取可共享的連結並確保檔案權限設定正確"""
+    try:
+        for attempt in range(MAX_RETRIES):
+            try:
+                # 設定檔案權限為公開
+                permission = {
+                    'type': 'anyone',
+                    'role': 'reader'
+                }
+                service.permissions().create(
+                    fileId=file_id,
+                    body=permission
+                ).execute()
+
+                # 獲取檔案資訊
+                file = service.files().get(
+                    fileId=file_id,
+                    fields='webContentLink,mimeType'
+                ).execute()
+
+                # 處理連結格式
+                content_link = file.get('webContentLink', '')
+                if content_link:
+                    # 移除下載參數
+                    content_link = content_link.replace('&export=download', '')
+                    
+                    # 如果是圖片檔案，確保有正確的副檔名
+                    mime_type = file.get('mimeType', '')
+                    if 'image' in mime_type and not any(content_link.lower().endswith(ext) 
+                        for ext in ['.jpg', '.jpeg', '.png', '.gif']):
+                        # 根據 MIME type 加入副檔名
+                        ext_map = {
+                            'image/jpeg': '.jpg',
+                            'image/png': '.png',
+                            'image/gif': '.gif'
+                        }
+                        content_link += ext_map.get(mime_type, '.jpg')
+
+                    if validate_image_url(content_link):
+                        print(f"成功產生有效的圖片連結: {content_link}")
+                        return content_link
+                    else:
+                        print("產生的連結未通過驗證")
+                        continue
+
+            except Exception as e:
+                print(f"嘗試 {attempt + 1}/{MAX_RETRIES} 失敗: {str(e)}")
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(2 ** attempt)  # 指數退避
+                continue
+
+        print("無法產生有效的圖片連結")
+        return None
+
     except Exception as e:
         print(f"產生連結時發生錯誤: {str(e)}")
         print(f"錯誤詳情:\n{traceback.format_exc()}")
@@ -123,7 +206,11 @@ def send_report():
                 file_info = find_report_file(service, FOLDER_ID)
                 if file_info:
                     print(f"找到檔案，開始處理圖片連結")
-                    image_url = get_shareable_link(file_info['id'])
+                    image_url = get_shareable_link(service, file_info['id'])
+            
+            if not image_url:
+                print("無法獲取有效的圖片連結")
+                return False
             
             # 對每個群組發送訊息
             for group_id in GROUP_IDS:
@@ -140,8 +227,8 @@ def send_report():
                     )
                     print(f"文字訊息發送成功 - 群組: {group_id}")
                     
-                    # 如果有圖片，發送圖片
-                    if image_url:
+                    # 確保圖片 URL 有效後再發送
+                    if validate_image_url(image_url):
                         image_message = ImageMessage(
                             originalContentUrl=image_url,
                             previewImageUrl=image_url
@@ -153,6 +240,9 @@ def send_report():
                             )
                         )
                         print(f"圖片發送成功 - 群組: {group_id}")
+                    else:
+                        print(f"圖片 URL 無效，跳過發送圖片")
+                        return False
                     
                 except Exception as e:
                     print(f"發送到群組 {group_id} 時發生錯誤: {str(e)}")
