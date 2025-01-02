@@ -24,7 +24,7 @@ app = Flask(__name__)
 # 設定
 CHANNEL_ACCESS_TOKEN = "lFD0fT5izkXIdZvVxg8hhpuehkxbar5utGwa7QyffB/IOLIZ5T1B5jwZnpF9STfHWdv7nbN7dDYklIjMdOU5G8LFXlVqjlC1HHsFemN+ydSYSRE9+lvaoAEdD2fNl76NVl6IhR5cE33AzdRVj+RWuQdB04t89/1O/w1cDnyilFU="
 GROUP_IDS = [
-    "C1171712999af06b315a23dd962ba9185", # 測試群組
+    "C190c4556db345f1cc094590dc96b7c99" # 正式群組
 ]
 FOLDER_ID = "1yNH3mP2LAUnZn8EjjGrzzpzNavkSzMqB"
 
@@ -40,7 +40,11 @@ def get_drive_service():
     """初始化 Google Drive 服務"""
     try:
         log_info("開始初始化 Drive 服務")
-        SCOPES = ['https://www.googleapis.com/auth/drive.readonly', 'https://www.googleapis.com/auth/drive.file']
+        SCOPES = [
+            'https://www.googleapis.com/auth/drive.readonly',
+            'https://www.googleapis.com/auth/drive.file',
+            'https://www.googleapis.com/auth/drive'
+        ]
         creds = service_account.Credentials.from_service_account_file(
             '/etc/secrets/credentials.json',
             scopes=SCOPES
@@ -50,6 +54,22 @@ def get_drive_service():
         return service
     except Exception as e:
         log_info(f"初始化 Drive 服務時發生錯誤: {str(e)}")
+        log_info(f"錯誤詳情:\n{traceback.format_exc()}")
+        return None
+
+def get_shareable_link(service, file_id):
+    """獲取可共享的連結"""
+    try:
+        log_info(f"開始處理檔案 ID: {file_id} 的分享連結")
+        
+        # 直接使用 export=view 的方式
+        direct_link = f"https://drive.google.com/uc?export=view&id={file_id}"
+        log_info(f"產生直接連結: {direct_link}")
+        
+        return direct_link
+            
+    except Exception as e:
+        log_info(f"處理分享連結時發生錯誤: {str(e)}")
         log_info(f"錯誤詳情:\n{traceback.format_exc()}")
         return None
 
@@ -96,60 +116,10 @@ def find_report_file(service, folder_id):
         target_file = files[0]
         log_info(f"成功找到檔案: {target_file['name']} (ID: {target_file['id']})")
         
-        # 列出找到的檔案的所有資訊
-        file_details = service.files().get(fileId=target_file['id'], fields='*').execute()
-        log_info(f"檔案詳細資訊: {file_details}")
-        
         return target_file
         
     except Exception as e:
         log_info(f"搜尋檔案時發生錯誤: {str(e)}")
-        log_info(f"錯誤詳情:\n{traceback.format_exc()}")
-        return None
-
-def get_shareable_link(service, file_id):
-    """獲取可共享的連結並確保檔案權限設定正確"""
-    try:
-        log_info(f"開始處理檔案 ID: {file_id} 的分享連結")
-        
-        # 檢查檔案當前權限
-        permissions = service.permissions().list(fileId=file_id).execute()
-        log_info(f"當前檔案權限: {permissions}")
-        
-        # 設定檔案權限
-        try:
-            permission = {
-                'type': 'anyone',
-                'role': 'reader'
-            }
-            service.permissions().create(
-                fileId=file_id,
-                body=permission
-            ).execute()
-            log_info("成功設定檔案為公開權限")
-        except Exception as e:
-            log_info(f"設定檔案權限時發生錯誤: {str(e)}")
-        
-        # 獲取檔案資訊
-        file = service.files().get(
-            fileId=file_id,
-            fields='webContentLink,webViewLink,thumbnailLink'
-        ).execute()
-        
-        log_info(f"檔案連結資訊: {file}")
-        
-        # 使用 webContentLink
-        content_link = file.get('webContentLink', '')
-        if content_link:
-            content_link = content_link.replace('&export=download', '')
-            log_info(f"最終的分享連結: {content_link}")
-            return content_link
-            
-        log_info("無法獲取有效的檔案連結")
-        return None
-        
-    except Exception as e:
-        log_info(f"處理分享連結時發生錯誤: {str(e)}")
         log_info(f"錯誤詳情:\n{traceback.format_exc()}")
         return None
 
