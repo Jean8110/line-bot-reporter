@@ -58,40 +58,44 @@ def get_drive_service():
         log_info(f"錯誤詳情:\n{traceback.format_exc()}")
         return None
 
-def setup_file_sharing(service, file_id):
-    """設置檔案分享權限"""
-    try:
-        # 直接嘗試設置權限
-        permission = {
-            'type': 'anyone',
-            'role': 'reader',
-            'allowFileDiscovery': False
-        }
-        service.permissions().create(
-            fileId=file_id,
-            body=permission,
-            supportsAllDrives=True,
-            fields='id'
-        ).execute()
-        log_info("已設置檔案公開權限")
-        return True
-    except Exception as e:
-        log_info(f"設置檔案權限時發生錯誤: {str(e)}")
-        return False
-
 def get_shareable_link(service, file_id):
     """獲取圖片分享連結"""
     try:
         log_info(f"開始處理檔案 ID: {file_id} 的分享連結")
         
-        # 直接設置權限
-        setup_file_sharing(service, file_id)
+        # 獲取檔案資訊和連結
+        file = service.files().get(
+            fileId=file_id,
+            fields='webViewLink,mimeType'
+        ).execute()
         
-        # 使用較簡單的 URL 格式
-        image_url = f"https://drive.google.com/uc?id={file_id}"
+        log_info(f"檔案資訊: {file}")
         
-        log_info(f"產生圖片連結: {image_url}")
-        return image_url
+        if 'webViewLink' in file:
+            # 將 webViewLink 轉換為直接下載連結
+            view_link = file['webViewLink']
+            image_url = f"https://drive.google.com/uc?export=view&id={file_id}"
+            
+            log_info(f"原始連結: {view_link}")
+            log_info(f"產生圖片連結: {image_url}")
+            
+            # 驗證連結可訪問性
+            try:
+                response = requests.head(image_url, allow_redirects=True, timeout=10)
+                if response.status_code == 200:
+                    return image_url
+                else:
+                    log_info(f"連結無法訪問，狀態碼: {response.status_code}")
+                    # 如果直接連結不可用，嘗試使用替代格式
+                    alt_url = f"https://drive.google.com/file/d/{file_id}/preview"
+                    log_info(f"嘗試替代連結: {alt_url}")
+                    return alt_url
+            except Exception as e:
+                log_info(f"驗證連結時發生錯誤: {str(e)}")
+                return None
+            
+        log_info("無法獲取檔案連結")
+        return None
             
     except Exception as e:
         log_info(f"處理分享連結時發生錯誤: {str(e)}")
