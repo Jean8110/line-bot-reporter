@@ -56,8 +56,8 @@ def get_drive_service():
 def get_shareable_link(file_id):
     """獲取可共享的連結"""
     try:
-        # 直接使用檔案ID構建公開連結
-        direct_link = f"https://drive.google.com/uc?export=view&id={file_id}"
+        # 使用 Google Photos 的直接連結格式
+        direct_link = f"https://lh3.googleusercontent.com/d/{file_id}"
         log_info(f"產生直接連結: {direct_link}")
         return direct_link
     except Exception as e:
@@ -123,7 +123,7 @@ def send_report():
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             
-            # 使用日本時區，並計算前一天的日期
+            # 使用日本時區
             jst = pytz.timezone('Asia/Tokyo')
             current_time = datetime.now(jst)
             yesterday = current_time - timedelta(days=1)
