@@ -18,7 +18,6 @@ import pytz
 import io
 import traceback
 import sys
-import requests
 
 app = Flask(__name__)
 
@@ -28,7 +27,6 @@ GROUP_IDS = [
     "C1171712999af06b315a23dd962ba9185", # 測試群組
 ]
 FOLDER_ID = "1yNH3mP2LAUnZn8EjjGrzzpzNavkSzMqB"
-API_KEY = "AIzaSyD8hoGX4HZ_mSqoiVSW_K9YjJTuNB-IgDY"  # Google API Key
 
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 
@@ -42,11 +40,7 @@ def get_drive_service():
     """初始化 Google Drive 服務"""
     try:
         log_info("開始初始化 Drive 服務")
-        SCOPES = [
-            'https://www.googleapis.com/auth/drive.readonly',
-            'https://www.googleapis.com/auth/drive.file',
-            'https://www.googleapis.com/auth/drive'
-        ]
+        SCOPES = ['https://www.googleapis.com/auth/drive.readonly']  # 只使用唯讀權限
         creds = service_account.Credentials.from_service_account_file(
             '/etc/secrets/credentials.json',
             scopes=SCOPES
@@ -59,59 +53,15 @@ def get_drive_service():
         log_info(f"錯誤詳情:\n{traceback.format_exc()}")
         return None
 
-def verify_image_url(url):
-    """驗證圖片 URL 是否可以訪問"""
+def get_shareable_link(file_id):
+    """獲取可共享的連結"""
     try:
-        response = requests.head(url, allow_redirects=True, timeout=10)
-        return response.status_code == 200
+        # 直接使用檔案ID構建公開連結
+        direct_link = f"https://drive.google.com/uc?export=view&id={file_id}"
+        log_info(f"產生直接連結: {direct_link}")
+        return direct_link
     except Exception as e:
-        log_info(f"驗證 URL 時發生錯誤: {str(e)}")
-        return False
-
-def get_shareable_link(service, file_id):
-    """獲取圖片分享連結"""
-    try:
-        log_info(f"開始處理檔案 ID: {file_id} 的分享連結")
-        
-        # 獲取檔案資訊
-        file = service.files().get(
-            fileId=file_id,
-            fields='mimeType,name'
-        ).execute()
-        
-        # 獲取訪問令牌
-        access_token = service._http.credentials.token
-        if not access_token:
-            log_info("無法獲取訪問令牌")
-            return None
-            
-        log_info(f"檔案資訊: {file}")
-        
-        # 構建直接下載連結
-        direct_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media&key={API_KEY}"
-        
-        # 檢查 URL 是否可訪問
-        if not verify_image_url(direct_url):
-            log_info("直接下載連結無法訪問")
-            # 嘗試使用授權標頭的 URL
-            auth_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media"
-            headers = {
-                'Authorization': f'Bearer {access_token}'
-            }
-            # 驗證授權連結
-            response = requests.head(auth_url, headers=headers, allow_redirects=True)
-            if response.status_code == 200:
-                log_info("使用授權連結成功")
-                return auth_url
-            else:
-                log_info("授權連結也無法訪問")
-                return None
-                
-        log_info(f"產生圖片連結: {direct_url}")
-        return direct_url
-            
-    except Exception as e:
-        log_info(f"處理分享連結時發生錯誤: {str(e)}")
+        log_info(f"產生連結時發生錯誤: {str(e)}")
         log_info(f"錯誤詳情:\n{traceback.format_exc()}")
         return None
 
@@ -173,7 +123,7 @@ def send_report():
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             
-            # 使用日本時區
+            # 使用日本時區，並計算前一天的日期
             jst = pytz.timezone('Asia/Tokyo')
             current_time = datetime.now(jst)
             yesterday = current_time - timedelta(days=1)
@@ -194,7 +144,7 @@ def send_report():
                 return False
                 
             log_info("開始處理檔案分享連結")
-            image_url = get_shareable_link(service, file_info['id'])
+            image_url = get_shareable_link(file_info['id'])
             if not image_url:
                 log_info("無法獲取有效的圖片連結")
                 return False
