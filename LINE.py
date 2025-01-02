@@ -28,6 +28,7 @@ GROUP_IDS = [
     "C1171712999af06b315a23dd962ba9185", # 測試群組
 ]
 FOLDER_ID = "1yNH3mP2LAUnZn8EjjGrzzpzNavkSzMqB"
+API_KEY = "AIzaSyD8hoGX4HZ_mSqoiVSW_K9YjJTuNB-IgDY"  # Google API Key
 
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 
@@ -58,44 +59,56 @@ def get_drive_service():
         log_info(f"錯誤詳情:\n{traceback.format_exc()}")
         return None
 
+def verify_image_url(url):
+    """驗證圖片 URL 是否可以訪問"""
+    try:
+        response = requests.head(url, allow_redirects=True, timeout=10)
+        return response.status_code == 200
+    except Exception as e:
+        log_info(f"驗證 URL 時發生錯誤: {str(e)}")
+        return False
+
 def get_shareable_link(service, file_id):
     """獲取圖片分享連結"""
     try:
         log_info(f"開始處理檔案 ID: {file_id} 的分享連結")
         
-        # 獲取檔案資訊和連結
+        # 獲取檔案資訊
         file = service.files().get(
             fileId=file_id,
-            fields='webViewLink,mimeType'
+            fields='mimeType,name'
         ).execute()
         
+        # 獲取訪問令牌
+        access_token = service._http.credentials.token
+        if not access_token:
+            log_info("無法獲取訪問令牌")
+            return None
+            
         log_info(f"檔案資訊: {file}")
         
-        if 'webViewLink' in file:
-            # 將 webViewLink 轉換為直接下載連結
-            view_link = file['webViewLink']
-            image_url = f"https://drive.google.com/uc?export=view&id={file_id}"
-            
-            log_info(f"原始連結: {view_link}")
-            log_info(f"產生圖片連結: {image_url}")
-            
-            # 驗證連結可訪問性
-            try:
-                response = requests.head(image_url, allow_redirects=True, timeout=10)
-                if response.status_code == 200:
-                    return image_url
-                else:
-                    log_info(f"連結無法訪問，狀態碼: {response.status_code}")
-                    # 如果直接連結不可用，嘗試使用替代格式
-                    alt_url = f"https://drive.google.com/file/d/{file_id}/preview"
-                    log_info(f"嘗試替代連結: {alt_url}")
-                    return alt_url
-            except Exception as e:
-                log_info(f"驗證連結時發生錯誤: {str(e)}")
+        # 構建直接下載連結
+        direct_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media&key={API_KEY}"
+        
+        # 檢查 URL 是否可訪問
+        if not verify_image_url(direct_url):
+            log_info("直接下載連結無法訪問")
+            # 嘗試使用授權標頭的 URL
+            auth_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media"
+            headers = {
+                'Authorization': f'Bearer {access_token}'
+            }
+            # 驗證授權連結
+            response = requests.head(auth_url, headers=headers, allow_redirects=True)
+            if response.status_code == 200:
+                log_info("使用授權連結成功")
+                return auth_url
+            else:
+                log_info("授權連結也無法訪問")
                 return None
-            
-        log_info("無法獲取檔案連結")
-        return None
+                
+        log_info(f"產生圖片連結: {direct_url}")
+        return direct_url
             
     except Exception as e:
         log_info(f"處理分享連結時發生錯誤: {str(e)}")
