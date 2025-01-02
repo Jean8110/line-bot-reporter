@@ -18,6 +18,7 @@ import pytz
 import io
 import traceback
 import sys
+import requests
 
 app = Flask(__name__)
 
@@ -57,16 +58,76 @@ def get_drive_service():
         log_info(f"錯誤詳情:\n{traceback.format_exc()}")
         return None
 
+def verify_image_url(url):
+    """驗證圖片 URL 是否符合 LINE 的要求"""
+    try:
+        log_info(f"驗證圖片 URL: {url}")
+        
+        # 檢查是否為 HTTPS
+        if not url.startswith('https'):
+            log_info("URL 必須使用 HTTPS")
+            return False
+            
+        # 檢查副檔名
+        if not any(url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif']):
+            log_info("URL 必須以 .jpg, .jpeg, .png 或 .gif 結尾")
+            return False
+            
+        # 檢查可訪問性和檔案大小
+        response = requests.head(url, allow_redirects=True, timeout=5)
+        if response.status_code != 200:
+            log_info(f"無法訪問 URL: {response.status_code}")
+            return False
+            
+        content_length = int(response.headers.get('content-length', 0))
+        if content_length > 10 * 1024 * 1024:  # 10MB
+            log_info("圖片大小超過 10MB 限制")
+            return False
+            
+        log_info("URL 驗證通過")
+        return True
+        
+    except Exception as e:
+        log_info(f"驗證 URL 時發生錯誤: {str(e)}")
+        return False
+
 def get_shareable_link(service, file_id):
-    """獲取可共享的連結"""
+    """獲取符合 LINE 要求的圖片連結"""
     try:
         log_info(f"開始處理檔案 ID: {file_id} 的分享連結")
         
-        # 直接使用 export=view 的方式
-        direct_link = f"https://drive.google.com/uc?export=view&id={file_id}"
-        log_info(f"產生直接連結: {direct_link}")
+        # 獲取檔案資訊
+        file = service.files().get(fileId=file_id, fields='mimeType,name').execute()
+        mime_type = file.get('mimeType', '')
+        original_name = file.get('name', '').lower()
         
-        return direct_link
+        log_info(f"檔案資訊 - MIME: {mime_type}, 原始檔名: {original_name}")
+        
+        # 先從原始檔名嘗試獲取副檔名
+        extension = None
+        for ext in ['.jpg', '.jpeg', '.png', '.gif']:
+            if original_name.endswith(ext):
+                extension = ext
+                break
+                
+        # 如果原始檔名沒有副檔名，根據 MIME type 決定
+        if not extension:
+            if 'png' in mime_type:
+                extension = '.png'
+            elif 'gif' in mime_type:
+                extension = '.gif'
+            else:
+                extension = '.jpg'  # 預設使用 jpg
+                
+        # 構建 URL（確保有副檔名）
+        image_url = f"https://drive.google.com/uc?export=view&id={file_id}{extension}"
+        
+        log_info(f"產生圖片連結: {image_url}")
+        
+        # 驗證 URL
+        if verify_image_url(image_url):
+            return image_url
+        return None
             
     except Exception as e:
         log_info(f"處理分享連結時發生錯誤: {str(e)}")
@@ -175,7 +236,7 @@ def send_report():
                     # 發送圖片
                     image_message = ImageMessage(
                         originalContentUrl=image_url,
-                        previewImageUrl=image_url
+                        previewImageUrl=image_url  # LINE 會自動處理預覽圖的大小
                     )
                     line_bot_api.push_message(
                         PushMessageRequest(
