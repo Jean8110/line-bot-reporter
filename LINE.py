@@ -61,23 +61,19 @@ def get_drive_service():
 def setup_file_sharing(service, file_id):
     """設置檔案分享權限"""
     try:
-        # 先檢查是否已經有公開權限
-        permissions = service.permissions().list(fileId=file_id).execute()
-        for permission in permissions.get('permissions', []):
-            if permission.get('type') == 'anyone':
-                log_info("檔案已經有公開權限")
-                return True
-        
-        # 如果沒有公開權限，新增權限
+        # 直接嘗試設置權限
         permission = {
             'type': 'anyone',
-            'role': 'reader'
+            'role': 'reader',
+            'allowFileDiscovery': False
         }
         service.permissions().create(
             fileId=file_id,
-            body=permission
+            body=permission,
+            supportsAllDrives=True,
+            fields='id'
         ).execute()
-        log_info("成功設置檔案公開權限")
+        log_info("已設置檔案公開權限")
         return True
     except Exception as e:
         log_info(f"設置檔案權限時發生錯誤: {str(e)}")
@@ -88,42 +84,14 @@ def get_shareable_link(service, file_id):
     try:
         log_info(f"開始處理檔案 ID: {file_id} 的分享連結")
         
-        # 確保檔案有正確的分享權限
-        if not setup_file_sharing(service, file_id):
-            log_info("無法設置檔案分享權限")
-            return None
+        # 直接設置權限
+        setup_file_sharing(service, file_id)
         
-        # 獲取檔案資訊
-        file = service.files().get(
-            fileId=file_id,
-            fields='webViewLink,webContentLink,mimeType,name'
-        ).execute()
+        # 使用較簡單的 URL 格式
+        image_url = f"https://drive.google.com/uc?id={file_id}"
         
-        log_info(f"檔案資訊: {file}")
-        
-        if 'webContentLink' in file:
-            # 構建新的連結格式
-            base_url = f"https://drive.google.com/uc?id={file_id}"
-            
-            # 根據 MIME type 加上適當的副檔名
-            mime_type = file.get('mimeType', '')
-            if 'png' in mime_type.lower():
-                base_url += '.png'
-            elif 'jpeg' in mime_type.lower() or 'jpg' in mime_type.lower():
-                base_url += '.jpg'
-            
-            log_info(f"產生圖片連結: {base_url}")
-            
-            # 驗證連結是否可以訪問
-            try:
-                response = requests.head(base_url, allow_redirects=True, timeout=10)
-                if response.status_code == 200:
-                    return base_url
-            except Exception as e:
-                log_info(f"驗證連結時發生錯誤: {str(e)}")
-        
-        log_info("無法獲取有效的檔案連結")
-        return None
+        log_info(f"產生圖片連結: {image_url}")
+        return image_url
             
     except Exception as e:
         log_info(f"處理分享連結時發生錯誤: {str(e)}")
